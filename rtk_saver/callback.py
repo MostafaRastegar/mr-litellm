@@ -31,9 +31,10 @@ import os
 import time
 from typing import Any, Literal, Optional
 
-from .compress import compress_messages, dedupe_tools, format_rtk_log
+from .port_9router.compress import compress_messages, dedupe_tools, format_rtk_log
 from .inject import detect_wire_format, inject_system_prompt, strip_injected_marker
-from .prompts import CAVEMAN_PROMPTS, PONYTAIL_PROMPTS
+from .port_9router.prompts import CAVEMAN_PROMPTS, PONYTAIL_PROMPTS
+
 
 try:  # LiteLLM may be absent in a pure-unit-test environment
     from litellm.integrations.custom_logger import CustomLogger

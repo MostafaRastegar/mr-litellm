@@ -15,9 +15,13 @@ from .callback import (
     resolve_config,
     summarize,
 )
-from .compress import compress_messages, dedupe_tools, format_rtk_log
 from .inject import detect_wire_format, inject_system_prompt
-from .prompts import CAVEMAN_PROMPTS, PONYTAIL_PROMPTS
+
+# Backward-compatible facade re-exports (legacy import paths)
+from .port_9router.compress import compress_messages, dedupe_tools, format_rtk_log, compress_text
+from .port_9router.constants import *
+from .port_9router.prompts import CAVEMAN_PROMPTS, PONYTAIL_PROMPTS
+from .port_9router.filters import *
 
 __all__ = [
     "TokenSaverLogger",
@@ -30,6 +34,7 @@ __all__ = [
     "compress_messages",
     "dedupe_tools",
     "format_rtk_log",
+    "compress_text",
     "detect_wire_format",
     "inject_system_prompt",
     "CAVEMAN_PROMPTS",
