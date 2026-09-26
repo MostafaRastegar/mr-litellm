@@ -1,0 +1,38 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:4000",
+    "ANTHROPIC_AUTH_TOKEN": "sk-YOUR_LITELLM_VIRTUAL_KEY",
+    "ANTHROPIC_MODEL": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+    "ANTHROPIC_SMALL_FAST_MODEL": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1000000"
+  },
+  "model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+  "extraKnownMarketplaces": {
+    "litellm": {
+      "source": {
+        "source": "url",
+        "url": "http://localhost:4000/claude-code/marketplace.json"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "pony@litellm": true
+  },
+  "mcpServers": {
+    "deepwiki": {
+      "type": "http",
+      "url": "http://localhost:4000/deepwiki/mcp",
+      "headers": {
+        "Authorization": "Bearer sk-YOUR_LITELLM_MASTER_KEY"
+      }
+    },
+    "postgresql": {
+      "type": "http",
+      "url": "http://localhost:4000/postgresql/mcp",
+      "headers": {
+        "Authorization": "Bearer sk-YOUR_LITELLM_MASTER_KEY"
+      }
+    }
+  }
+}

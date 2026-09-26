@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "deepwiki": {
+      "transport": {
+        "type": "streamableHttp",
+        "url": "http://localhost:4000/deepwiki/mcp",
+        "headers": {
+          "Authorization": "Bearer sk-YOUR_LITELLM_MASTER_KEY"
+        }
+      }
+    },
+    "postgresql": {
+      "transport": {
+        "type": "streamableHttp",
+        "url": "http://localhost:4000/postgresql/mcp",
+        "headers": {
+          "Authorization": "Bearer sk-YOUR_LITELLM_MASTER_KEY"
+        }
+      }
+    }
+  }
+}

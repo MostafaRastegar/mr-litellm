@@ -1,0 +1,90 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "litellm/openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+  "small_model": "litellm/openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+  "provider": {
+    "litellm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LiteLLM",
+      "options": {
+        "baseURL": "http://localhost:4000/v1",
+        "apiKey": "sk-YOUR_LITELLM_VIRTUAL_KEY"
+      },
+      "models": {
+        "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
+          "name": "Nemotron 3 Ultra (free)",
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        },
+        "or-free": {
+          "name": "OpenRouter Free (nemotron lightning)",
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        },
+        "or-deepseek": {
+          "name": "OpenRouter DeepSeek Chat",
+          "limit": {
+            "context": 163840,
+            "output": 16384
+          }
+        },
+        "claude-sonnet": {
+          "name": "Claude Sonnet 4.5",
+          "limit": {
+            "context": 1000000,
+            "output": 64000
+          }
+        },
+        "claude-haiku": {
+          "name": "Claude Haiku 4.5",
+          "limit": {
+            "context": 200000,
+            "output": 64000
+          }
+        },
+        "gpt-4o": {
+          "name": "GPT-4o",
+          "limit": {
+            "context": 128000,
+            "output": 16384
+          }
+        }
+      }
+    }
+  },
+  "mcp": {
+    "codegraph": {
+      "type": "local",
+      "command": [
+        "codegraph",
+        "serve",
+        "--mcp"
+      ],
+      "enabled": true
+    },
+    "codebase-memory-mcp": {
+      "command": [
+        "/home/mr/.local/bin/codebase-memory-mcp"
+      ],
+      "type": "local"
+    },
+    "deepwiki": {
+      "type": "remote",
+      "url": "http://localhost:4000/deepwiki/mcp",
+      "headers": {
+        "Authorization": "Bearer sk-YOUR_LITELLM_MASTER_KEY"
+      }
+    },
+    "postgresql": {
+      "type": "remote",
+      "url": "http://localhost:4000/postgresql/mcp",
+      "headers": {
+        "Authorization": "Bearer sk-YOUR_LITELLM_MASTER_KEY"
+      }
+    }
+  }
+}
