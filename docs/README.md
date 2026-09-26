@@ -42,4 +42,5 @@ This directory contains technical architecture references, comparative engineeri
 ### 4. Structural Module Guides
 * **[Internal Architecture of `rtk_saver`](../rtk_saver/README.md):** Detailed breakdown of components ported from 9Router vs custom LiteLLM gateway code.
 * **[Tooling & Scripts Categorization (`tools/`)](../tools/README.md):** Categorized index of CLI tools, financial reporting, parity validation, and testing harnesses.
+* **[Agent Configuration Examples (`harness-examples/`)](../harness-examples/README.md):** Sanitized Claude Code, OpenCode, and Cline configuration samples pointing at the gateway.
 

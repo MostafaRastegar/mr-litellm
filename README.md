@@ -19,7 +19,10 @@ Client ──► LiteLLM :4000 ──► Provider (Anthropic / OpenAI / Gemini /
 ```
 
 Verified against the real 9Router JavaScript: **13/13 reference cases are
-byte-identical** (`tools/parity_check.py`), and 151 unit tests pass.
+byte-identical** (`tools/parity/parity_check.py`), and 151 unit tests pass.
+
+Further reading: architecture and operations docs live in [`docs/`](docs/README.md);
+sanitized agent configs in [`harness-examples/`](harness-examples/README.md).
 
 ---
 
@@ -29,33 +32,46 @@ byte-identical** (`tools/parity_check.py`), and 151 unit tests pass.
 rtk_saver/                  ← the product: imported by LiteLLM at runtime
 ├── callback.py             # TokenSaverLogger (CustomLogger): pre-call hook,
 │                           #   config resolution, metrics accounting
-├── compress.py             # RTK engine: filter autodetect + dedupe_tools
 ├── inject.py               # system-prompt injection per wire format
 │                           #   (OpenAI messages / Anthropic input+system)
-├── prompts.py              # Caveman & Ponytail prompt texts (ported 1:1)
-├── constants.py            # filter caps & tunables (mirror Rust/JS defaults)
-└── filters/                # 12 RTK filters, byte-parity ported from JS
-    ├── git_diff.py  git_log.py  git_status.py  grep.py
-    ├── find.py      ls.py       tree.py         build_output.py
-    ├── dedup_log.py smart_truncate.py  read_numbered.py  search_list.py
+├── README.md               # ported-vs-custom file map (9Router vs LiteLLM)
+├── compress.py             # ─┐ facade re-exports (backward-compat shims):
+├── constants.py            #  │ legacy import paths kept working, so tests,
+├── prompts.py              #  │ parity tools and config.yaml need no changes
+├── filters/                # ─┘
+└── port_9router/           # ← the 9Router port: pure deterministic logic
+    ├── compress.py         # RTK engine: filter autodetect + dedupe_tools
+    ├── constants.py        # filter caps & tunables (mirror Rust/JS defaults)
+    ├── prompts.py          # Caveman & Ponytail prompt texts (ported 1:1)
+    └── filters/            # 12 RTK filters, byte-parity ported from JS
+        ├── git_diff.py  git_log.py  git_status.py  grep.py
+        ├── find.py      ls.py       tree.py         build_output.py
+        └── dedup_log.py smart_truncate.py  read_numbered.py  search_list.py
 
 tests/                      # 151 tests: filters, behaviour, hook, compress
+docs/                       # architecture, gateway-vs-Agent.md, MCP guides
+harness-examples/           # sanitized Claude Code / OpenCode / Cline configs
 tools/                      # operator tooling & marketplace integration
 ├── litellm_marketplace.py  # Claude Code plugin & LiteLLM MCP sync CLI
-├── savings_report.py       # aggregate savings from metrics JSONL
-├── savings_by_key.py       # per-virtual-key savings from the dashboard API
-├── capture_server.py       # mock provider that logs every request body
-├── send_test_traffic.py    # fires ON/OFF traffic through the gateway
-├── verify_capture.py       # asserts compression ran, nothing leaked
-├── parity_check.py         # python-vs-JS byte-parity harness
-├── js_reference.mjs        # runs the real 9Router JS filters in node
-└── dump_samples.py         # generates parity sample corpus
+├── analytics/              # reporting & ROI
+│   ├── savings_report.py   # aggregate savings from metrics JSONL
+│   └── savings_by_key.py   # per-virtual-key savings from the dashboard API
+├── testing/                # on-the-wire E2E rig
+│   ├── capture_server.py   # mock provider that logs every request body
+│   ├── send_test_traffic.py# fires ON/OFF traffic through the gateway
+│   └── verify_capture.py   # asserts compression ran, nothing leaked
+├── parity/                 # 9Router byte-parity harness
+│   ├── parity_check.py     # python-vs-JS comparison
+│   ├── js_reference.mjs    # runs the real 9Router JS filters in node
+│   └── dump_samples.py     # generates parity sample corpus
+└── legacy/                 # superseded shell wrappers (kept for reference)
 
 docker-compose.tokensaver.yml   # gateway + postgres, bind-mounts rtk_saver/
 config.yaml                     # models, callback registration, fallbacks
 provision_teams.sh              # teams + budgeted virtual keys
 .env                            # master/salt keys + provider keys (mode 600)
 ```
+
 
 ### How `rtk_saver` is wired into LiteLLM (three lines, no patching)
 
@@ -81,18 +97,20 @@ provision_teams.sh              # teams + budgeted virtual keys
 ### How `tools/` fit
 
 `tools/` is **operator tooling and client integration** — nothing there runs inside
-the gateway.
+the gateway. Scripts are grouped by purpose (see `tools/README.md`):
 
 - `litellm_marketplace.py` (CLI alias: `litellm-marketplace` / `litellm-mcp`): discovers
   LiteLLM Claude Code plugins and LiteLLM MCP servers, configuring them across
   Cline, OpenCode, and Claude Code.
-- `savings_report.py`: reads the raw JSONL metrics the hook writes inside the container.
-- `savings_by_key.py`: reads the daily-spend rollup the admin UI renders from
+- `analytics/savings_report.py`: reads the raw JSONL metrics the hook writes inside the container.
+- `analytics/savings_by_key.py`: reads the daily-spend rollup the admin UI renders from
   `GET /user/daily/activity` (per virtual key, priced at the served model's input rate).
-- `capture_server.py` + `send_test_traffic.py` + `verify_capture.py`: self-contained E2E
-  rig proving on the wire what the hook does without provider keys.
-- `parity_check.py` + `js_reference.mjs` + `dump_samples.py`: verify Python RTK filters
-  are byte-identical to the original 9Router JavaScript.
+- `testing/capture_server.py` + `testing/send_test_traffic.py` + `testing/verify_capture.py`:
+  self-contained E2E rig proving on the wire what the hook does without provider keys.
+- `parity/parity_check.py` + `parity/js_reference.mjs` + `parity/dump_samples.py`:
+  verify Python RTK filters are byte-identical to the original 9Router JavaScript.
+- `legacy/`: superseded shell wrappers, kept only for reference.
+
 
 ### The request path in code
 
@@ -274,7 +292,7 @@ key alias, provider-reported token usage). Summarize:
 
 ```bash
 docker exec litellm-litellm-1 cat /app/token_saver_metrics.jsonl \
-  | python3 tools/savings_report.py -
+  | python3 tools/analytics/savings_report.py -
 ```
 
 ```
@@ -309,7 +327,7 @@ renders, aggregated across keys (the dashboard shows one key at a time):
 
 ```bash
 export LITELLM_MASTER_KEY=sk-...            # from .env
-python3 tools/savings_by_key.py --days 7    # or --start YYYY-MM-DD --end YYYY-MM-DD
+python3 tools/analytics/savings_by_key.py --days 7    # or --start YYYY-MM-DD --end YYYY-MM-DD
 ```
 
 ```
@@ -330,14 +348,14 @@ price for (OpenRouter `:free`); the token count is always real.
 **3. On-the-wire E2E proof** (no provider keys needed):
 
 ```bash
-python3 tools/capture_server.py 18081 &      # mock provider, logs every body
+python3 tools/testing/capture_server.py 18081 &      # mock provider, logs every body
 #  ensure the mock-capture block in config.yaml (marked "test only"), then:
 docker compose -f docker-compose.tokensaver.yml up -d && sleep 25
-TS_KEY_ON=<on-key> TS_KEY_OFF=<off-key> python3 tools/send_test_traffic.py
-python3 tools/verify_capture.py              # asserts on captured bodies
+TS_KEY_ON=<on-key> TS_KEY_OFF=<off-key> python3 tools/testing/send_test_traffic.py
+python3 tools/testing/verify_capture.py              # asserts on captured bodies
 ```
 
-`verify_capture.py` checks: compression ran on ON calls, OFF calls passed
+`testing/verify_capture.py` checks: compression ran on ON calls, OFF calls passed
 intact, the injection marker appears exactly on ON calls, and no internal
 bookkeeping (`token_saver_stats`) leaks toward the provider. Measured on
 this stack: **547 prompt_tokens ON vs 7,859 OFF — a 93% reduction** on a
@@ -358,8 +376,8 @@ python3 -m venv /tmp/tsvenv && /tmp/tsvenv/bin/pip install pyyaml pytest
 /tmp/tsvenv/bin/python -m pytest tests/ -q          # 151 passed
 
 # Byte-parity vs the real 9Router JS (needs node + the JS sources):
-node tools/js_reference.mjs > /tmp/js_out.json
-/tmp/tsvenv/bin/python tools/parity_check.py /tmp/js_out.json
+node tools/parity/js_reference.mjs > /tmp/js_out.json
+/tmp/tsvenv/bin/python tools/parity/parity_check.py /tmp/js_out.json
 # → byte-identical: 13 / differing: 0 / detect mismatch: 0
 ```
 
@@ -375,9 +393,9 @@ docker compose -f docker-compose.tokensaver.yml up -d
 
 # Metrics live inside the container FS — archive before recreating:
 docker exec litellm-litellm-1 cat /app/token_saver_metrics.jsonl > metrics-backup.jsonl
-
 # Inspect state
 docker exec litellm-litellm-1 ls /app/rtk_saver       # the hook package
+docker exec litellm-litellm-1 ls /app/rtk_saver/port_9router  # 9Router port
 docker exec litellm-db-1 psql -U litellm -d litellm   # keys / teams / spend DB
 ```
 
@@ -418,6 +436,13 @@ bridges plugins and MCP servers to agents that lack native marketplace discovery
     - **OpenCode**: `~/.config/opencode/opencode.jsonc` (`remote`, JSONC comment-safe)
     - **Claude Code**: `~/.claude.json` (`http`)
 - **State & Manifest**: Tracks installed versions, git caches, and active agent targets in `~/.litellm-marketplace/manifest.json` for clean, safe removal.
+
+### Structural docs
+
+- [`docs/README.md`](docs/README.md) — index of architecture/comparison/MCP guides.
+- [`rtk_saver/README.md`](rtk_saver/README.md) — which files are 9Router ports vs LiteLLM-custom.
+- [`tools/README.md`](tools/README.md) — tool categorization (analytics / testing / parity / legacy).
+- [`harness-examples/README.md`](harness-examples/README.md) — sanitized Claude Code / OpenCode / Cline configs.
 
 ### Common Commands
 

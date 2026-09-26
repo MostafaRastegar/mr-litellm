@@ -62,14 +62,14 @@ python3 tools/parity/dump_samples.py /tmp/parity_samples.json
 node tools/parity/js_reference.mjs > /tmp/js_out.json
 python3 tools/parity/parity_check.py /tmp/js_out.json
 ```
-همچنین برای اجرای شبیه‌سازی زنده ترافیک هوک:
+Also, for live traffic simulation of the hook:
 ```bash
-# اجرای سرور کپچر در پس‌زمینه
-python3 tools/capture_server.py 18081 &
+# Start local capture server
+python3 tools/testing/capture_server.py 18081 &
 
-# ارسال بسته‌های آزمایشی
-python3 tools/send_test_traffic.py
+# Send test payloads
+TS_KEY_ON=<on-key> TS_KEY_OFF=<off-key> python3 tools/testing/send_test_traffic.py
 
-# اعتبارسنجی خروجی ثبت‌شده
-python3 tools/verify_capture.py
+# Validate results
+python3 tools/testing/verify_capture.py
 ```

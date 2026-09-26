@@ -72,5 +72,5 @@ The official recommendation for organizations is to adopt a hybrid pattern:
 - The client-side `Agent.md` guarantees that the generated code strictly adheres to the product's quality and architectural requirements.
 
 By doing this:
-- زیرساخت پروکسی تضمین می‌کند ترافیک ارسالی به مدل حداقل هزینه و حجم را دارد.
-- فایل `Agent.md` کلاینت تضمین می‌کند که کد تولیدی با نیازمندی‌های کیفی محصول مطابقت دارد.
+- The proxy infrastructure guarantees that traffic sent to the model has the minimum possible cost and size.
+- The client-side `Agent.md` guarantees that generated code adheres to the product's quality requirements.
