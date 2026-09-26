@@ -1,0 +1,94 @@
+# ═══════════════════════════════════════════════════════════════════════
+# LiteLLM configuration with the in-process Token Saver.
+#
+# The token saver is registered as a CustomLogger callback. It receives the
+# request body exactly as LiteLLM will send it, and may only:
+#   • shrink tool_result content (RTK filters)
+#   • collapse repeated tool outputs (dedupe)
+#   • append to the system instruction (Caveman / Ponytail)
+#
+# It never rewrites beta headers, never drops unknown body fields, and never
+# touches response headers. That is deliberate: those are the behaviours that
+# make providers reject third-party gateways.
+# ═══════════════════════════════════════════════════════════════════════
+
+model_list:
+  # ── Anthropic (built by LiteLLM's own Anthropic SDK path) ───────────
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      mode: chat
+
+  - model_name: claude-haiku
+    litellm_params:
+      model: anthropic/claude-haiku-4-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      mode: chat
+
+  # ── OpenAI ──────────────────────────────────────────────────────────
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: chat
+
+  # ── Google ──────────────────────────────────────────────────────────
+  - model_name: gemini-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+    model_info:
+      mode: chat
+
+  # ── OpenRouter (many cheap / free models behind one key) ────────────
+  - model_name: or-deepseek
+    litellm_params:
+      model: openrouter/deepseek/deepseek-chat
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      mode: chat
+
+  # ── Free OpenRouter model (token-saver real-world benchmark) ─────────
+  - model_name: or-free
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3.5-lightning:free
+      api_key: os.environ/OPENROUTER_API_KEY
+    model_info:
+      mode: chat
+
+  # ── Local capture mock (token-saver E2E testing only) ────────────────
+  # Remove this block when done testing.
+  - model_name: mock-capture
+    litellm_params:
+      model: openai/mock-capture
+      api_base: http://172.21.0.1:18081/v1
+      api_key: mock-key
+    model_info:
+      mode: chat
+
+litellm_settings:
+  # 👇 the token saver. Path is relative to PYTHONPATH=/app
+  callbacks: rtk_saver.callback.proxy_handler_instance
+  drop_params: true
+  # Report actual (post-compression) usage in spend logs
+  set_verbose: true
+
+router_settings:
+  # Second safety net: if a provider is down, try a cheaper sibling.
+  fallbacks:
+    - claude-sonnet: ["claude-haiku"]
+    - gpt-4o: ["or-deepseek"]
+  num_retries: 2
+  timeout: 600
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  # Lock down the docs surface in production:
+  # NO_DOCS: "True"
+  # NO_REDOC: "True"
+  # NO_OPENAPI: "True"

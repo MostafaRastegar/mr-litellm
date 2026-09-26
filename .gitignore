@@ -1,0 +1,13 @@
+/example
+.env
+.DS_Store
+__pycache__/
+*.py[cod]
+*.sqlite3
+.env
+.env.prod
+.venv/
+venv/
+*.egg-info/
+.idea/
+.vscode/

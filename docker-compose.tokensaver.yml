@@ -1,0 +1,73 @@
+# ═══════════════════════════════════════════════════════════════════════
+# LiteLLM + Token Saver (RTK + Caveman + Ponytail)
+#
+# Drop-in replacement for the separate 9Router / OmniRoute hop. Compression
+# runs in-process inside LiteLLM, so providers receive a request built by
+# LiteLLM's own native SDK clients — no third-party gateway in the path.
+# That is what fixes provider rejections (400 "Extra inputs are not
+# permitted", replaced anthropic-beta, dropped response headers).
+#
+# Bring up:   docker compose -f docker-compose.tokensaver.yml up -d
+#
+# Before ANY real use:
+#   1. Replace LITELLM_MASTER_KEY / LITELLM_SALT_KEY with long random values:
+#        openssl rand -base64 48
+#   2. Put provider API keys in a .env file next to this compose file.
+#   3. Pin the image to a release tag (not `latest`) for reproducibility.
+# ═══════════════════════════════════════════════════════════════════════
+
+services:
+  litellm:
+    # Pinned to the tag actually available on this mirror and used for all
+    # smoke tests. Reproduce locally with: docker pull <image> && docker images
+    image: hub.hamdocker.ir/litellm/litellm:latest
+    ports:
+      - "4000:4000"
+    environment:
+      # 🔐 REQUIRED — fail fast instead of booting with placeholder keys
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?set LITELLM_SALT_KEY in .env}
+      DATABASE_URL: postgresql://litellm:litellm@db:5432/litellm
+      STORE_MODEL_IN_DB: "True"
+
+      # Makes `rtk_saver` importable as a package
+      PYTHONPATH: /app
+
+      # Provider credentials consumed by config.yaml via os.environ/
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+
+      # Optional GLOBAL default for the token saver. Leave unset to keep it
+      # opt-in per virtual key (recommended for a phased rollout):
+      # TOKEN_SAVER_DEFAULT_CONFIG: '{"enabled":true,"caveman":"lite","rtk":true}'
+
+      NO_PROXY: localhost,127.0.0.0/8
+      no_proxy: localhost,127.0.0.0/8
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./rtk_saver:/app/rtk_saver:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: hub.hamdocker.ir/postgres:16
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm
+      POSTGRES_DB: litellm
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
