@@ -1,29 +1,29 @@
-# معماری و راهنمای جامع RTK Token Saver در LiteLLM
+# RTK Token Saver Architecture & Request Lifecycle in LiteLLM
 
-این سند به عنوان مرجع فنی و مدیریتی برای تشریح عملکرد، فلو و نحوه پیاده‌سازی سیستم بهینه‌سازی توکن (RTK Token Saver) در پروکسی LiteLLM تهیه شده است.
-
----
-
-## ۱. چرایی و پیش‌زمینه (The Problem & Solution)
-
-در جریان کارهای برنامه‌نویسی و گفتگوهای چندنوبته (Multi-turn Agentic Sessions) با مدل‌های زبانی بزرگ (LLMs)، بخش عمده‌ای از توکن‌های ورودی صرف خروجی ابزارها (مانند `git diff`، `git log`، اجرای تست‌ها، جستجوهای `grep` و ساختار فایل‌ها) و همچنین پیام‌های اضافه و تعارفات مدل می‌شود.
-
-پیش از این، یک سرویس مجزا به نام **9Router** در شبکه قرار داشت که:
-- ایجاد یک نقطه شکست اضافه (Single Point of Failure) و تأخیر شبکه (Network Latency) می‌کرد.
-- باعث تغییر یا حذف برخی هدرهای استاندارد (مانند `anthropic-beta`) می‌شد.
-- شفافیت در تفکیک هزینه‌های توکن و لاگینگ واحد را مختل می‌کرد.
-
-**راهکار فعلی:**
-سیستم RTK Saver به صورت **Native و In-Process** درون هسته LiteLLM پیاده‌سازی شده است. هیچ هاپ یا سرور واسطی وجود ندارد و درخواست‌ها مستقیماً با کلاینت‌های رسمی خود LiteLLM به پرووایدرها (Anthropic, OpenAI, Gemini, OpenRouter) ارسال می‌شوند.
+This document serves as the technical and architectural reference for understanding the mechanics, request flow, and configuration of the Token Saver (RTK) system inside the LiteLLM proxy.
 
 ---
 
-## ۲. فلوی اجرای درخواست در LiteLLM (Request Lifecycle Flow)
+## 1. Problem Statement & Solution Background (Why We Deprecated 9Router)
 
-زمانی که هر کلاینت (مانند Cline، OpenCode، Claude Code یا اسکریپت‌های سفارشی) به پورت ۴۰۰۰ پروکسی درخواست می‌زند، فرآیند زیر در کسری از میلی‌ثانیه طی می‌شود:
+In agentic coding sessions, the vast majority of input tokens are consumed by heavy tool outputs (e.g., `git diff`, `git log`, test suite logs, `grep` searches, and directory trees) along with verbose model pleasantries and filler text.
+
+Previously, a separate network hop and service called **9Router** handled this compression. However, 9Router introduced:
+- An extra Single Point of Failure (SPOF) and network latency.
+- Reliance on rewriting request bodies which stripped standard headers (such as `anthropic-beta`).
+- Fragmented logging, making it difficult to aggregate cost and savings metrics.
+
+**Current Solution:**
+The RTK Token Saver is implemented **natively and in-process** inside LiteLLM as a `CustomLogger` plugin. There are no extra hops or sidecar servers. Requests are routed straight through LiteLLM's native SDK clients to upstream providers (Anthropic, OpenAI, Gemini, OpenRouter) without modified wire formats.
+
+---
+
+## 2. Request Lifecycle Flow in LiteLLM
+
+When any client (such as Cline, OpenCode, Claude Code, or custom scripts) makes a request to port `4000`, the following sequence executes in milliseconds:
 
 ```
-[کلاینت: IDE / Agent / Curl]
+[Client: IDE / Agent / CLI Script]
              │
              ▼
       LiteLLM Gateway (:4000)
@@ -32,97 +32,101 @@
     ┌─────────────────────────────────────────────────────────────┐
     │              rtk_saver.callback (Pre-Call Hook)             │
     │                                                             │
-    │  ۱. RTK Compress:                                           │
-    │     - شناسایی نوع داده در ۱ کیلوبایت اول خروجی ابزار        │
-    │     - اعمال فیلتر مناسب از بین ۱۲ فیلتر اختصاصی             │
-    │     - نادیده گرفتن حباب‌های زیر ۵۰۰ بایت یا لاگ‌های خطا     │
+    │  1. RTK Compress:                                           │
+    │     - Sniffs the first 1KB of tool output to detect format  │
+    │     - Applies the matching filter out of 12 deterministic    │
+    │       filters                                               │
+    │     - Skips blobs < 500 bytes or unmatched raw logs         │
     │                                                             │
-    │  ۲. Tool Deduplication:                                     │
-    │     - مقایسه خروجی ابزارهای تکراری در تاریخچه گفتگو         │
-    │     - جایگزینی موارد تکراری قدیمی با استاب تک‌خطی ارجاعی    │
+    │  2. Tool Deduplication:                                     │
+    │     - Compares tool outputs against previous conversation   │
+    │       history                                               │
+    │     - Replaces repeated historical blobs with a one-line    │
+    │       reference stub                                        │
     │                                                             │
-    │  ۳. Prompt Styling (Caveman / Ponytail):                    │
-    │     - افزودن دستورالعمل‌های کوتاه‌سازی به پرامپت سیستم      │
-    │     - سازگاری خودکار با فرمت OpenAI messages یا Anthropic   │
+    │  3. Prompt Styling (Caveman / Ponytail):                    │
+    │     - Appends succinctness instructions to the system prompt│
+    │     - Handles OpenAI messages / Anthropic / Gemini schemas  │
     │                                                             │
-    │  ۴. Accounting & Metrics:                                   │
-    │     - اندازه‌گیری بایت‌های قبل و بعد                        │
-    │     - آماده‌سازی متادیتای compression_savings برای داشبورد  │
+    │  4. Accounting & Metrics:                                   │
+    │     - Measures before/after byte counts                     │
+    │     - Prepares compression_savings metadata for dashboard   │
     └─────────────────────────────────────────────────────────────┘
              │
              ▼
-     ارسال به مدل پرووایدر اصلی (Native SDK Call)
+     Dispatch to Upstream Provider (Native SDK Call)
              │
              ▼
     ┌─────────────────────────────────────────────────────────────┐
     │            rtk_saver.callback (Success Event Hook)          │
     │                                                             │
-    │  - ثبت رکورد در /app/token_saver_metrics.jsonl              │
-    │  - قیمت‌گذاری توکن‌های صرفه‌جویی‌شده بر اساس تعرفه مدل      │
-    │  - درج در جدول روزانه دیتابیس (Dashboard Savings)           │
+    │  - Appends record to /app/token_saver_metrics.jsonl         │
+    │  - Prices saved tokens based on model rate cards            │
+    │  - Updates the dashboard daily-spend rollup DB table        │
     └─────────────────────────────────────────────────────────────┘
              │
              ▼
-[بازگشت پاسخ نهایی به کلاینت]
+[Final response returned to client]
 ```
 
-### اصل Fail-Open:
-اگر به هر دلیلی در بدنه درخواست ساختار نامعتبر وجود داشته باشد یا در مراحل فشرده‌سازی خطایی رخ دهد، سیستم هرگز درخواست را متوقف نمی‌کند (`fail-open`). خطا در لاگ ثبت شده و درخواست بدون تغییر به پرووایدر ارسال می‌شود تا پایداری ۱۰۰٪ سیستم حفظ گردد.
+### Fail-Open Design:
+If the request body is malformed, or if any filter encounters an unexpected edge-case or exception, the system never blocks the request (`fail-open`). The exception is logged for observability, and the unmodified raw payload is forwarded to the provider to guarantee 100% gateway availability.
 
 
 ---
 
-## ۳. دوازده فیلتر فشرده‌ساز RTK (RTK Filters)
+## 3. The 12 RTK Compression Filters
 
-فیلترهای RTK در مسیر `rtk_saver/filters/` قرار دارند و به صورت کاملاً قطعی (Deterministic) و با تطابق بایتی ۱:۱ نسبت به نسخه مرجع پیاده شده‌اند:
+The RTK filters reside under `rtk_saver/port_9router/filters/` and are implemented deterministically with strict 1:1 byte-level parity against the 9Router upstream reference:
 
-1. **git_diff:** فشرده‌سازی تغییرات گیت، حذف کانتکست‌های تکراری و متمرکزسازی خطوط تغییریافته.
-2. **git_log:** حذف جزئیات غیرضروری کامیت‌ها و خلاصه کردن تاریخچه.
-3. **git_status:** نمایش تک‌خطی و فشرده فایل‌های Modified/Untracked.
-4. **grep:** ادغام خطوط نزدیک و حذف لاگ‌های تکراری یافته‌ها.
-5. **find:** تلخیص خروجی جستجوی فایل و حذف مسیرهای ریشه‌ای زائد.
-6. **ls:** قالب‌بندی بهینه لیست دایرکتوری‌ها.
-7. **tree:** تبدیل ساختارهای درختی حجیم به نمایش بهینه و متراکم.
-8. **build_output:** پاک‌سازی خطوط پیشرفت بیهوده، کامپایل و دانلود پکیج‌ها و تمرکز بر خطاها و نتیجه نهایی.
-9. **dedup_log:** حذف پیام‌های لاگ متوالی و تکراری با شمارنده `[repeated X times]`.
-10. **smart_truncate:** برش هوشمند متون بسیار حجیم به شکلی که ابتدا و انتهای حیاتی فایل حفظ شود.
-11. **read_numbered:** بهینه‌سازی فایل‌های شماره‌گذاری شده و سورس‌کدها.
-12. **search_list:** فشرده‌سازی لیست‌های مبتنی بر جستجو و فیلتر.
+1. **`git_diff`:** Compresses git diffs, strips redundant context lines, and focuses on modified hunks.
+2. **`git_log`:** Summarizes git histories and drops verbose commit metadata.
+3. **`git_status`:** Collapses file statuses (Modified/Untracked) into single, readable rows.
+4. **`grep`:** Merges adjacent match lines and deduplicates identical results.
+5. **`find`:** Abbreviates filesystem search output and prunes root paths.
+6. **`ls`:** Reformats directory listings into a compact, human-readable format.
+7. **`tree`:** Shrinks large directory trees by summarizing and hiding low-signal subtrees.
+8. **`build_output`:** Cleans up noisy compilation/download progress lines, retaining only errors and final exit codes.
+9. **`dedup_log`:** Collapses consecutive repeated log messages into `[repeated X times]` counters.
+10. **`smart_truncate`:** Truncates massive text blobs intelligently while preserving critical headers and footers.
+11. **`read_numbered`:** Optimizes output of numbered source files to reduce sequential line overhead.
+12. **`search_list`:** Compresses search-list and filtered output arrays.
 
-> **نکته کلیدی:** فیلترهای RTK هیچ کلمه‌ای "اضافه" یا اینجکت نمی‌کنند؛ بلکه تنها وظیفه حذف داده‌های زائد خروجی ابزارها را بر عهده دارند.
+> **Key Insight:** RTK filters never inject or append any extra words or instructions; they strictly operate as byte-reducing, syntax-aware compressors for tool outputs.
 
 ---
 
-## ۴. اینجکشن پرامپت‌ها (Caveman & Ponytail) و تحلیل توکن‌ها
+## 4. Prompt Styling & Injection (Caveman & Ponytail)
 
-بخش اینجکشن مسئول تغییر رفتار و استایل خروجی مدل است تا پاسخ‌ها نیز از نظر توکن تولیدی (Output Tokens که بسیار گران‌تر هستند) کم‌حجم و بدون حواشی باشند.
+The prompt injection module is responsible for modifying model styling and output behaviors to ensure responses are reduced in verbosity and complexity, dramatically cutting down expensive output tokens.
 
-### تحلیل آماری پرامپت‌های اینجکت‌شده:
+### Prompt Injection Metrics:
 
-| استایل / سطح | کاراکتر | کلمات | خطوط | تخمین توکن ورودی | هدف و کارکرد |
+| Style / Level | Characters | Words | Lines | Est. Input Tokens | Purpose & Behavior |
 |---|---|---|---|---|---|
-| **Caveman lite** | ۱,۷۳۶ | ۲۵۶ | ۱ خط | **~۴۳۰ توکن** | حذف تعارفات، جملات مقدماتی و حواشی؛ پاسخ مستقیم با ساختار فنی کامل |
-| **Caveman full** | ۱,۸۳۴ | ۲۵۶ | ۱ خط | **~۴۵۰ توکن** | حذف حروف اضافه و پاسخ غارنشین‌وار تلگرافی برای کارهای سرعتی کدنویسی |
-| **Caveman ultra** | ۱,۶۷۸ | ۲۴۶ | ۱ خط | **~۴۲۰ توکن** | نهایت فشردگی کلامی (بیشترین صرفه‌جویی در خروجی) |
-| **Ponytail lite** | ۱,۵۶۱ | ۲۵۳ | ۱ خط | **~۳۹۰ توکن** | مدل کد درخواستی را می‌زند اما در یک خط راهکار ساده‌تر و بدون پکیج را پیشنهاد می‌دهد |
-| **Ponytail full** | ۱,۵۶۷ | ۲۵۱ | ۱ خط | **~۳۹۰ توکن** | اصرار بر کتابخانه استاندارد، جلوگیری از لایه‌های انتزاعی و کلاس‌های بی‌مورد |
-| **Ponytail ultra** | ۱,۶۱۱ | ۲۵۹ | ۱ خط | **~۴۰۰ توکن** | حذف کدهای اضافه و مینیمالیسم حداکثری (YAGNI extremist) |
+| **Caveman lite** | 1,736 | 256 | 1 line | **~430 tokens** | Removes greetings, introductory sentences, and filler; direct, technical structure |
+| **Caveman full** | 1,834 | 265 | 1 line | **~450 tokens** | Strips prepositions and commands telegraphic short responses for fast coding |
+| **Caveman ultra** | 1,678 | 246 | 1 line | **~420 tokens** | Extreme verbal compactness (maximum output savings) |
+| **Ponytail lite** | 1,561 | 253 | 1 line | **~390 tokens** | Provides the requested code, but suggests one-line dependency-free alternatives |
+| **Ponytail full** | 1,567 | 251 | 1 line | **~390 tokens** | Mandates standard library usage, preventing unnecessary abstractions or classes |
+| **Ponytail ultra** | 1,611 | 259 | 1 line | **~400 tokens** | Eliminates boilerplate aggressively (strict YAGNI) |
 
-### هم‌افزایی توکن‌ها و توجیه اقتصادی:
-- در صورت فعال بودن همزمان هر دو استایل (مثلاً `caveman: lite` + `ponytail: lite`)، مجموعاً **حدود ۸۲۰ توکن** به پرامپت سیستم افزوده می‌شود.
-- در یک سشن معمولی برنامه‌نویسی با ۱۰ نوبت رفت و برگشت:
-  - هزینه ورودی پرامپت اینجکت‌شده: ناچیز (توکن ورودی ارزان است).
-  - صرفه‌جویی خروجی مدل: صدها خط توضیح اضافه، کدهای بویلرپلیت و تعارفات حذف می‌شوند که منجر به صرفه‌جویی **چندین هزار توکن خروجی** با ارزش ریالی و دلاری بالا می‌گردد.
-- **کنترل انعطاف‌پذیر:** برای تیم‌هایی که تولید محتوا یا تحلیل متنی انجام می‌دهند، پرامپت‌ها خاموش می‌شوند (`ts_caveman=off`) و تنها فشرده‌سازی RTK کار می‌کند.
+### Token Synergy & Economic Justification:
+- Enabling both styles simultaneously (e.g., `caveman: lite` + `ponytail: lite`) adds **approximately 820 tokens** to the system prompt.
+- In a typical 10-turn coding session:
+  - **Input overhead cost:** Negligible (input token rates are very cheap compared to output tokens).
+  - **Model output savings:** Hundreds of lines of boilerplate, redundant code explanations, and chat filler are eliminated, yielding **several thousands of output tokens** in dollar savings per session.
+- **Flexible Controls:** For teams handling copywriting, translation, or textual analysis, styling prompts are fully disabled (`ts_caveman=off`, `ts_ponytail=off`), preserving 100% natural tone while still running RTK output compression and deduplication.
+
 
 
 
 ---
 
-## ۵. نحوه پیکربندی و استفاده (Configuration Guide)
+## 5. Configuration Guide
 
-### الف) تنظیم متادیتا روی کلید مجازی (توصیه شده):
-بهترین حالت این است که برای هر تیم یا کاربر، رفتار توکن‌سیور در متادیتای کلید ست شود:
+### A) Setting Metadata on Virtual Keys (Recommended):
+The recommended approach is setting token-saver behaviors directly in the virtual key metadata:
 
 ```bash
 curl -X POST http://localhost:4000/key/generate \
@@ -139,38 +143,38 @@ curl -X POST http://localhost:4000/key/generate \
     }}'
 ```
 
-### ب) پروفایل‌های از پیش تعریف‌شده:
-1. **پروفایل Programmer (برنامه‌نویسی و ایجنت‌ها):**  
-   `ts_rtk=true, ts_dedupe_tools=true, ts_caveman=lite`  
-   صرفه‌جویی حداکثری در سشن‌های طولانی کدنویسی.
-2. **پروفایل Content (تولید محتوا، ترجمه، بازبینی متنی):**  
-   `ts_rtk=true, ts_dedupe_tools=true, ts_caveman=off, ts_ponytail=off`  
-   فشرده‌سازی خروجی ابزارها بدون هیچ‌گونه دستکاری در لحن و ادبیات طبیعی مدل.
-3. **پروفایل Disabled (تست و سنجش A/B):**  
-   `ts_enabled=false`  
-   غیرفعال‌سازی کامل هوک برای مقایسه مستقیم کیفیت و مصرف توکن.
+### B) Predefined Profiles:
+1. **Programmer Profile (Agentic Coding & Agents):**
+   `ts_rtk=true, ts_dedupe_tools=true, ts_caveman=lite`
+   Maximum savings in long agentic coding sessions.
+2. **Content Profile (Copywriting, Translation, Text Analysis):**
+   `ts_rtk=true, ts_dedupe_tools=true, ts_caveman=off, ts_ponytail=off`
+   Compresses tool outputs while leaving the model's natural tone completely untouched.
+3. **Disabled Profile (A/B Testing & Comparison):**
+   `ts_enabled=false`
+   Disables the hook entirely for direct comparison of baseline quality and token usage.
 
 ---
 
-## ۶. پایش و گزارش‌گیری میزان صرفه‌جویی (Monitoring & ROI)
+## 6. Monitoring & ROI (Savings Reporting)
 
-### ۱. لاگ زنده در کنسول سرور:
+### 1. Live server console logs:
 ```bash
 docker compose -f docker-compose.tokensaver.yml logs -f litellm | grep TokenSaver
-# نمونه خروجی:
+# Example output:
 # [RTK] saved 29841B / 30000B (99.5%) via [dedup-log] hits=3 prompt=lite
 # [TokenSaver] dedupe=1 net saved 1237B
 ```
 
-### ۲. گزارش تحلیلی تجمعی از فایل لاگ محلی:
+### 2. Aggregated report from the local metrics log:
 ```bash
-docker exec litellm-litellm-1 cat /app/token_saver_metrics.jsonl | python3 tools/savings_report.py -
+docker exec litellm-litellm-1 cat /app/token_saver_metrics.jsonl | python3 tools/analytics/savings_report.py -
 ```
 
-### ۳. گزارش رسمی داشبورد به تفکیک کلید (تخمین دلاری):
+### 3. Official dashboard report per virtual key (Dollar estimate):
 ```bash
 export LITELLM_MASTER_KEY=sk-...
-python3 tools/savings_by_key.py --days 7
+python3 tools/analytics/savings_by_key.py --days 7
 ```
-این دستور مستقیماً داده‌های پایگاه‌داده LiteLLM را خوانده و صرفه‌جویی مالی را بر اساس نرخ ورودی مدل‌های استفاده‌شده گزارش می‌دهد.
+This command queries LiteLLM's database directly to calculate the dollar savings based on model rates.
 

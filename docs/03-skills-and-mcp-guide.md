@@ -1,106 +1,108 @@
-# راهنمای فنی Skills و معماری Hosted MCP در LiteLLM
+# LiteLLM Skills & Hosted MCP Architecture Guide
 
-این سند به بررسی ابزارهای ارتباطی مدل با ابزارهای بیرونی (Model Context Protocol - MCP) و مدیریت افزونه‌های هوش مصنوعی (Marketplace / Skills) می‌پردازد.
+This document explores Model Context Protocol (MCP) for connecting models to external tools and unified management of AI plugins via the LiteLLM Marketplace (Skills).
 
 ---
 
-## ۱. آشنایی با مفاهیم MCP و ابزارهای خارجی
+## 1. Introduction to MCP and External Tools
 
-### مدل سنتی MCP و چالش‌های آن:
-پروتکل کانتکست مدل (MCP) که توسط آنتروپیک معرفی شد، به مدل‌ها اجازه می‌دهد به منابع اطلاعاتی زنده (پایگاه‌های داده، سیستم فایل، APIهای سازمانی و ویکی‌ها) متصل شوند.
-در مدل سنتی، هر برنامه‌نویس باید سرور MCP را روی لپ‌تاپ خود با Node/Python اجرا کند:
-- **خطرات امنیتی:** رمز عبور دیتابیس‌های پروداکشن یا استیجینگ و کلیدهای API باید روی لپ‌تاپ تک‌تک توسعه‌دهندگان قرار گیرد.
-- **سربار راه‌اندازی:** هر برنامه‌نویس با مشکلات نصب پکیج، تداخل پورت‌ها و ناسازگاری سیستم‌عامل مواجه می‌شود.
+### Traditional Local MCP Model and Its Challenges:
+The Model Context Protocol (MCP), introduced by Anthropic, enables AI models to connect to live data sources (databases, local file systems, internal corporate APIs, and wikis).
+In the traditional local model, every developer must manually run an MCP server on their laptop using Node.js or Python:
+- **Security Risks:** Production/staging database credentials and API keys must be copied and stored individually on every developer's local machine.
+- **Setup Overhead:** Every developer faces package installation errors, local port collisions, and cross-operating system compatibility issues.
 
-### معماری Hosted MCP در LiteLLM:
-سرور LiteLLM به عنوان یک **Gateway امن متمرکز برای سرورهای MCP** عمل می‌کند. سرورهای دیتابیس یا اسناد سازمانی یک‌بار درون LiteLLM تنظیم می‌شوند و کاربران از طریق اندپوینت استاندارد به آن متصل می‌گردند:
+### Hosted MCP Architecture in LiteLLM:
+The LiteLLM server acts as a **Secure Centralized Gateway for MCP Servers**. Database or document servers are configured once inside LiteLLM, and all users connect to them through a standard, unified endpoint:
 `http://proxy:4000/<server_name>/mcp`
 
-**مزایای سازمانی:**
-1. **امنیت بالا:** اطلاعات اتصال به پایگاه‌داده و سرویس‌ها در سرور باقی مانده و توسعه‌دهنده تنها با توکن احراز هویت LiteLLM به آن وصل می‌شود.
-2. **مدیریت سطح دسترسی:** ادمین می‌تواند مشخص کند کدام کاربر یا تیم به کدام ابزار دسترسی داشته باشد.
-3. **لاگینگ و حسابرسی کامل:** تمام کوئری‌ها و فراخوانی‌های ابزارها ثبت می‌شوند.
+**Organizational Advantages:**
+1. **Enhanced Security:** Database and service connection strings remain on the server; developers only connect using LiteLLM authentication tokens.
+2. **Access Control:** Administrators define which teams or users have access to which specific tools.
+3. **Full Logging & Auditing:** All queries and tool calls are centrally recorded for compliance.
 
 ---
 
-## ۲. ابزارهای CLI اختصاصی پروژه
+## 2. Custom CLI Tools
 
-برای پر کردن شکاف میان استاندارد Anthropic Claude Code و سایر محیط‌های محبوب توسعه‌دهندگان (مانند Cline در VS Code یا OpenCode در ترمینال)، دو ابزار CLI اختصاصی توسعه یافته است:
+To bridge the gap between Anthropic's standard Claude Code marketplace and other popular developer environments (such as Cline in VS Code or OpenCode in the terminal), two custom CLI tools were developed:
 
-### الف) ابزار `litellm-mcp`:
-مدیریت و اتصال خودکار سرورهای MCP رجیستر شده در LiteLLM به ایجنت‌های محلی:
-- شناسایی ترانسپورت‌های مناسب برای هر ایجنت:
-  - برای **Cline:** پیکربندی با نوع `streamableHttp`
-  - برای **OpenCode:** پیکربندی با نوع `remote` (با نگه‌داری کامنت‌های فایل JSONC)
-  - برای **Claude Code:** پیکربندی با نوع `http`
-- تزریق اتوماتیک هدر `Authorization: Bearer <token>` از متغیرهای محیطی یا کلید ادمین.
+### A) The `litellm-mcp` Tool:
+Manages and automatically connects MCP servers registered in LiteLLM to local agents:
+- Detects the appropriate transport protocol for each agent:
+  - **Cline:** Configured with `streamableHttp`
+  - **OpenCode:** Configured as `remote` (preserving JSONC comments)
+  - **Claude Code:** Configured as `http`
+- Automatically injects the `Authorization: Bearer <token>` header from environment variables or the admin key.
 
-### ب) ابزار `litellm-marketplace`:
-مدیریت دریافت و نصب مهارت‌ها (Skills) از مارکت‌پلیس LiteLLM (`/claude-code/marketplace.json`):
-- دانلود پلاگین‌ها در کش ایزوله (`~/.litellm-marketplace/git-cache`).
-- نگاشت و کپی فایل‌های `SKILL.md` به مسیرهای استاندارد ایجنت‌ها:
+### B) The `litellm-marketplace` Tool:
+Manages downloading and installing Skills from the LiteLLM hosted marketplace (`/claude-code/marketplace.json`):
+- Downloads plugins into an isolated cache (`~/.litellm-marketplace/git-cache`).
+- Maps and copies `SKILL.md` files to standard agent paths:
   - Cline: `~/.cline/skills/<name>/SKILL.md`
   - OpenCode: `~/.config/opencode/skills/<name>/SKILL.md`
   - Claude: `~/.claude/skills/<name>/SKILL.md`
-- ثبت در مانیفست محلی (`manifest.json`) جهت تضمین حذف تمیز و بدون باقی ماندن ردپا.
+- Records installs in a local `manifest.json` to guarantee clean, residue-free removal.
 
 ---
 
-## ۳. بررسی سناریوی واقعی و راهنمای گام‌به‌گام (End-to-End Walkthrough)
+## 3. End-to-End Walkthrough
 
-در ادامه، سناریوی اتصال به سرور مستندات هوشمند (`deepwiki`) و اجرای کوئری با ایجنت کلاین (Cline) را مرور می‌کنیم:
+Here is a complete scenario demonstrating the connection to an intelligent documentation server (`deepwiki`) and querying it using the Cline agent:
 
-### گام اول: بررسی ارتباط و سلامت محیط
+### Step 1: Verify Environment Health
 ```bash
 litellm-marketplace doctor
 ```
-خروجی این دستور تأیید می‌کند که پروکسی در دسترس است و فایل‌های کانفیگ هر سه ایجنت شناسایی شده‌اند.
+This confirms the proxy is reachable and configuration files for all three agents were detected successfully.
 
-### گام دوم: کشف ابزارهای موجود روی سرور
+### Step 2: Discover Available Tools on the Server
 ```bash
 litellm-mcp list
-# خروجی:
+# Output:
 #   LiteLLM MCP Servers (http://localhost:4000/v1/mcp/server)
 #     postgresql   Query and manage PostgreSQL databases with read-only access
 #     deepwiki     DeepWiki public MCP
 ```
 
-### گام سوم: اتصال و رجیستر کردن ابزار
-توسعه‌دهنده تنها با اجرای دستور زیر، ابزار را به محیط کاری خود اضافه می‌کند:
+### Step 3: Register and Connect the Tool
+The developer simply runs the following command to add the tool to their local environment:
 ```bash
 litellm-mcp install deepwiki
 ```
-کانفیگ ایجنت‌ها به صورت اتمیک به‌روزرسانی شده و ابزار در ادیتور فعال می‌گردد.
+Agent configuration files are updated atomically, making the tool immediately active in the IDE.
 
-### گام چهارم: اجرای کوئری در ادیتور
-توسعه‌دهنده در محیط VS Code با ایجنت هوش مصنوعی چت می‌کند:
-> «از طریق ابزار deepwiki ساختار مستندات ریپازیتوری BerriAI/litellm را بررسی کن و نحوه پیکربندی Provider Fallback را توضیح بده.»
+### Step 4: Execute Query in the Editor
+The developer chats with the AI agent in VS Code:
+> "Inspect the documentation structure of the BerriAI/litellm repository using the deepwiki tool and explain how Provider Fallback is configured."
 
-**اتفاقات پشت صحنه:**
-1. ایجنت متوجه ابزار `deepwiki` شده و یک درخواست Tool Call به پروکسی LiteLLM می‌زند.
-2. گیت‌وی درخواست را تأیید کرده و مستندات را استخراج و بازمی‌گرداند.
-3. در صورتی که متن خروجی ابزار بزرگ باشد، هوک **RTK Saver** وارد عمل شده و حجم داکیومنت را بدون افت معنایی فشرده می‌کند تا کانتکست هدر نرود.
-4. مدل پاسخ نهایی را به صورت دقیق، خلاصه و متمرکز ارائه می‌دهد.
+**Behind the Scenes:**
+1. The agent detects the `deepwiki` tool and sends a Tool Call request to the LiteLLM proxy.
+2. The gateway authenticates the request, extracts the documentation, and returns it.
+3. If the returned tool text is massive, the **RTK Saver** hook compresses the document without semantic loss so the context window does not overflow.
+4. The model returns a precise, succinct, and focused final response.
 
 ---
 
-## ۴. جدول دستورات کاربردی (CLI Cheat-Sheet)
+## 4. Command Reference (CLI Cheat-Sheet)
 
 ```bash
-# پایش سلامت محیط و مسیرهای ایجنت‌ها
+# Environment and agent health checks
 litellm-marketplace doctor
 
-# کار با مهارت‌ها (Skills & Plugins)
-litellm-marketplace list              # لیست اسکیل‌های موجود در سرور
-litellm-marketplace info <plugin>     # مشاهده توضیحات و لیست اسکیل‌ها
-litellm-marketplace install <plugin>  # نصب اسکیل روی همه ایجنت‌ها
-litellm-marketplace update <plugin>   # دریافت آخرین تغییرات از گیت
-litellm-marketplace remove <plugin>   # حذف کامل و پاک‌سازی مانیفست
+# Working with Skills & Plugins
+litellm-marketplace list              # List available plugins
+litellm-marketplace info <plugin>     # Show details and skills
+litellm-marketplace install <plugin>  # Install skills on all agents
+litellm-marketplace update <plugin>   # Pull latest changes from git
+litellm-marketplace remove <plugin>   # Clean uninstall & manifest cleanup
 
-# کار با ابزارهای سازمانی (Hosted MCP)
-litellm-mcp list                      # مشاهده لیست سرورهای در دسترس
-litellm-mcp install <server>          # اتصال و کانفیگ سرور روی تمام ایجنت‌ها
-litellm-mcp install <server> --agent cline # اتصال فقط به ادیتور Cline
-litellm-mcp sync                      # همگام‌سازی تمام سرورهای مجاز کاربر
-litellm-mcp remove <server>           # قطع اتصال و پاک کردن کانفیگ
+# Working with Corporate Tools (Hosted MCP)
+
+litellm-mcp list                      # Show available hosted servers
+litellm-mcp install <server>          # Connect server on all agents
+litellm-mcp install <server> --agent cline # Connect only to Cline editor
+litellm-mcp sync                      # Sync all accessible servers
+litellm-mcp remove <server>           # Disconnect and clean configuration
+
 ```
