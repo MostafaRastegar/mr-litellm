@@ -14,35 +14,35 @@
 
 model_list:
   # ── Anthropic (built by LiteLLM's own Anthropic SDK path) ───────────
-  - model_name: claude-sonnet
-    litellm_params:
-      model: anthropic/claude-sonnet-4-5
-      api_key: os.environ/ANTHROPIC_API_KEY
-    model_info:
-      mode: chat
+  # - model_name: claude-sonnet
+  #   litellm_params:
+  #     model: anthropic/claude-sonnet-4-5
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+  #   model_info:
+  #     mode: chat
 
-  - model_name: claude-haiku
-    litellm_params:
-      model: anthropic/claude-haiku-4-5
-      api_key: os.environ/ANTHROPIC_API_KEY
-    model_info:
-      mode: chat
+  # - model_name: claude-haiku
+  #   litellm_params:
+  #     model: anthropic/claude-haiku-4-5
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+  #   model_info:
+  #     mode: chat
 
-  # ── OpenAI ──────────────────────────────────────────────────────────
-  - model_name: gpt-4o
-    litellm_params:
-      model: openai/gpt-4o
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      mode: chat
+  # # ── OpenAI ──────────────────────────────────────────────────────────
+  # - model_name: gpt-4o
+  #   litellm_params:
+  #     model: openai/gpt-4o
+  #     api_key: os.environ/OPENAI_API_KEY
+  #   model_info:
+  #     mode: chat
 
-  # ── Google ──────────────────────────────────────────────────────────
-  - model_name: gemini-pro
-    litellm_params:
-      model: gemini/gemini-2.5-pro
-      api_key: os.environ/GEMINI_API_KEY
-    model_info:
-      mode: chat
+  # # ── Google ──────────────────────────────────────────────────────────
+  # - model_name: gemini-pro
+  #   litellm_params:
+  #     model: gemini/gemini-2.5-pro
+  #     api_key: os.environ/GEMINI_API_KEY
+  #   model_info:
+  #     mode: chat
 
   # ── OpenRouter (many cheap / free models behind one key) ────────────
   - model_name: or-deepseek
@@ -55,7 +55,7 @@ model_list:
   # ── Free OpenRouter model (token-saver real-world benchmark) ─────────
   - model_name: or-free
     litellm_params:
-      model: openrouter/nvidia/nemotron-3.5-lightning:free
+      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
       api_key: os.environ/OPENROUTER_API_KEY
     model_info:
       mode: chat
@@ -80,8 +80,7 @@ litellm_settings:
 router_settings:
   # Second safety net: if a provider is down, try a cheaper sibling.
   fallbacks:
-    - claude-sonnet: ["claude-haiku"]
-    - gpt-4o: ["or-deepseek"]
+    - or-free: ["or-deepseek"]
   num_retries: 2
   timeout: 600
 

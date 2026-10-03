@@ -23,13 +23,14 @@ services:
     image: hub.hamdocker.ir/litellm/litellm:latest
     ports:
       - "4000:4000"
+    env_file:
+      - .env
     environment:
       # 🔐 REQUIRED — fail fast instead of booting with placeholder keys
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?set LITELLM_SALT_KEY in .env}
       DATABASE_URL: postgresql://litellm:litellm@db:5432/litellm
       STORE_MODEL_IN_DB: "True"
-
       # Makes `rtk_saver` importable as a package
       PYTHONPATH: /app
 
@@ -41,7 +42,8 @@ services:
 
       # Optional GLOBAL default for the token saver. Leave unset to keep it
       # opt-in per virtual key (recommended for a phased rollout):
-      # TOKEN_SAVER_DEFAULT_CONFIG: '{"enabled":true,"caveman":"lite","rtk":true}'
+      TOKEN_SAVER_DEFAULT_CONFIG: '{"enabled":true,"caveman":"lite","rtk":true}'
+      # TOKEN_SAVER_METRICS_PATH: /app/token_saver_metrics.jsonl
 
       NO_PROXY: localhost,127.0.0.0/8
       no_proxy: localhost,127.0.0.0/8
